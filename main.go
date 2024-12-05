@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"compress/zlib"
+	"crypto/sha1"
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 )
 
@@ -73,6 +75,73 @@ func main() {
 		splits := strings.SplitN(resultString, "\x00", 2)
 		_, content := splits[0], splits[1]
 		fmt.Print(content)
+	case "hash-object":
+		if len(os.Args) < 3 {
+			fmt.Fprintf(os.Stderr, "usage: mygit <command> [<args>...]\n")
+			os.Exit(1)
+		} else if len(os.Args) == 3 {
+			filePath := os.Args[2]
+			file, err := os.ReadFile(filePath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error reading file \n hello")
+				print(err)
+				os.Exit(1)
+			}
+			content := string(file)
+			stats, err := os.Stat(filePath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error reading stats ")
+				os.Exit(1)
+			}
+			contentAndHeader := fmt.Sprintf("blob %d\x00%s", stats.Size(), content)
+			sha := sha1.Sum([]byte(contentAndHeader))
+			hash := fmt.Sprintf("%x", sha)
+			println(hash)
+		} else if len(os.Args) == 4 {
+			cmd := os.Args[2]
+			if cmd != "-w" {
+				fmt.Fprintf(os.Stderr, "error, second params needs to be '-w'\n")
+				os.Exit(1)
+			}
+			filePath := os.Args[3]
+			println("Filepath: %s\n", filePath)
+			file, err := os.ReadFile(filePath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error reading file\n")
+				fmt.Println(err)
+				os.Exit(1)
+			}
+			content := string(file)
+			stats, err := os.Stat(filePath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error reading stats")
+				os.Exit(1)
+			}
+			contentAndHeader := fmt.Sprintf("blob %d\x00%s", stats.Size(), content)
+			sha := sha1.Sum([]byte(contentAndHeader))
+			hash := fmt.Sprintf("%x", sha)
+			blobName := []rune(hash)
+			blobPath := ".git/objects/"
+			for i, v := range blobName {
+				blobPath += string(v)
+				if i == 1 {
+					blobPath += "/"
+				}
+			}
+			var buffer bytes.Buffer
+			z := zlib.NewWriter(&buffer)
+			z.Write([]byte(contentAndHeader))
+			z.Close()
+			os.MkdirAll(filepath.Dir(blobPath), os.ModePerm)
+			f, _ := os.Create(blobPath)
+			defer f.Close()
+			f.Write(buffer.Bytes())
+			fmt.Print(hash)
+		} else {
+			fmt.Fprintf(os.Stderr, "usage: mygit <command> [<args>...]\n")
+			os.Exit(1)
+		}
+
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command %s\n", command)
 		os.Exit(1)
